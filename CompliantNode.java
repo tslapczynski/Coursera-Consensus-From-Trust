@@ -1,68 +1,64 @@
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
-import static java.util.stream.Collectors.toSet;
+import java.util.stream.Collectors;
 
-/* CompliantNode refers to a node that follows the rules (not malicious)*/
+interface Node {
+    void setFollowees(boolean[] followees);
+    void setPendingTransactions(Set<Transaction> pendingTransactions);
+    Set<Transaction> sendToFollowers();
+    void receiveFromFollowees(Set<Candidate> candidates);
+}
+
+class Transaction {
+    int id;
+    // other transaction properties
+}
+
+class Candidate {
+    int sender;
+    Transaction tx;
+    // other candidate properties
+}
+
 public class CompliantNode implements Node {
-    private double _p_graph, _p_malicious, _p_txDistribution;
-    private boolean[] _followees, _blacklists;
-    private Set<Transaction> _consensusTrans, _pendingTrans = new HashSet<>();
-    private int _numRounds;
-    private int _currentRound, _oldRound = 0;
+
+    private final double graph;
+    private final double malicious;
+    private final double txDistribution;
+    private final int numRounds;
+    private Set<Transaction> pendingTransactions;
+    private boolean[] followees;
+    private Set<Integer> blackList;
 
     public CompliantNode(double p_graph, double p_malicious, double p_txDistribution, int numRounds) {
-        this._p_graph = p_graph;
-        this._p_malicious = p_malicious;
-        this._p_txDistribution = p_txDistribution;
-        this._numRounds = numRounds;
+        this.graph = p_graph;
+        this.malicious = p_malicious;
+        this.txDistribution = p_txDistribution;
+        this.numRounds = numRounds;
     }
 
     public void setFollowees(boolean[] followees) {
-        this._followees = followees;
-        this._blacklists = new boolean[followees.length];
-        Arrays.fill(this._blacklists,Boolean.FALSE);
+        this.followees = followees;
+        this.blackList = new HashSet<>(followees.length);
     }
 
-    public void setPendingTransaction(Set<Transaction> pendingTransactions) {
-        this._pendingTrans = pendingTransactions;
-        this._consensusTrans = pendingTransactions;
+    public void setPendingTransactions(Set<Transaction> pendingTransactions) {
+        this.pendingTransactions = pendingTransactions;
     }
 
     public Set<Transaction> sendToFollowers() {
-        Set<Transaction> Txs = new HashSet<>();
-        if (_currentRound == _numRounds) {
-            Txs = _consensusTrans;
-        } else if (_currentRound < _numRounds) {
-            Txs.addAll(_pendingTrans);
-            _oldRound = _currentRound;
-        }
-        return Txs;
-    }
-
-    public void checkMalicious(Set<Candidate> candidates) {
-        Set<Integer> senders = candidates.stream().map(c -> c.sender).collect(toSet());
-        for (int i = 0; i < _followees.length; i++) {
-            if (_followees[i] && !senders.contains(i)) {    //node might be functionally dead and never actually broadcast any transactions
-                _blacklists[i] = true;
-            }
-        }
+        return new HashSet<>(pendingTransactions);
     }
 
     public void receiveFromFollowees(Set<Candidate> candidates) {
-        this._currentRound++;
-        if (_currentRound >= _numRounds-1) {
-            return;
+        final Set<Integer> senders = candidates.stream().map(candidate -> candidate.sender).collect(Collectors.toSet());
+        for (int i = 0; i < this.followees.length; i++) {
+            if (this.followees[i] && !senders.contains(i))
+                this.blackList.add(i);
         }
-        if (_oldRound > 0 && _currentRound > _oldRound) {
-            _pendingTrans.clear();
-        }
-        checkMalicious(candidates);
-        for (Candidate c : candidates) {
-            if (!_consensusTrans.contains(c.tx) && !_blacklists[c.sender]) {
-                _consensusTrans.add(c.tx);
-                _pendingTrans.add(c.tx);
-            }
-        }
+        this.pendingTransactions = candidates.stream()
+                .filter(candidate -> !this.blackList.contains(candidate.sender))
+                .map(candidate -> candidate.tx)
+                .collect(Collectors.toSet());
     }
 }
